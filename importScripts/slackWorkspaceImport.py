@@ -4,12 +4,15 @@ import json
 from datetime import datetime, timedelta, timezone
 import requests
 from processInvoiceContent import extract_total_from_invoice_text
+import time as timer
 
-key = "Your_API_Key_Here"
+key = "90f8985c1ad84810b1fd8a6222be536f"
 header_dict = {}
 
 header_dict['Ocp-Apim-Subscription-Key'] = key
-base_url = 'https' + '://' + 'api.yuuvis.io' + '/dms-core'
+base_url = 'https://api.yuuvis.io'
+
+input_path = "../input/"
 
 
 class Message:
@@ -26,7 +29,7 @@ class Attachment:
         self.url = url
 
 #establish export file structure
-slack_export_root_folder_path = "./input/" + os.listdir("./input/").pop()+"/"
+slack_export_root_folder_path = input_path + os.listdir(input_path).pop()
 slack_export_root_files = os.listdir(slack_export_root_folder_path)
 
 meta_files = [f for f in slack_export_root_files if isfile(join(slack_export_root_folder_path, f))]
@@ -49,29 +52,32 @@ for channel_dir in channel_dirs:
 epoch = datetime(1601, 1, 1)
 
 for channel_dir in channel_dirs:
+
     messages = []
-    print('gathering messages for channel '+channel_dir)
+    print(f'gathering messages for channel {channel_dir}')
     for chat_log_file in input_json_file_paths[channel_dir]:
         date = basename(chat_log_file).split('.')[0]
 
         with open(chat_log_file, 'r') as inputFile:
 
             test_slack_chat_log = json.load(inputFile)
-            for x in test_slack_chat_log:
-                timestamp = (epoch + timedelta(microseconds = float(x['ts'])))
+            for post in test_slack_chat_log:
+                timestamp = (epoch + timedelta(microseconds = float(post['ts'])))
                 time = timestamp.time().strftime("%H:%M:%S")
 
                 created_at = date+"T"+time
 
-                message = Message(x['user'], x['text'], created_at, channel_dir, [])
-                if 'files' in x:
+                message = Message(post['user'], post['text'], created_at, channel_dir, [])
+                if 'files' in post:
                     file_attachments = []
-                    for file in x['files']:
+                    for file in post['files']:
                         file_attachments.append(Attachment(file['name'], file['mimetype'], file['url_private_download']))
                     message.attachments = file_attachments
                 messages.append(message)
-    print('importing '+str(len(messages))+ ' messages')
-    for message in messages:
+
+    len_messages = len(messages)
+    print(f'importing {len_messages} messages')
+    for index_message, message in enumerate(messages):
         #create message object
         message_object = {}
         message_properties = {}
@@ -82,62 +88,76 @@ for channel_dir in channel_dirs:
         message_properties["numOfAttachments"] = {"value": str(len(message.attachments))}
         message_object["properties"] = message_properties
 
-
         #import message object
-
+        print(f'importing message {index_message}')
         request_body_message = {
             'data': ('message.json', json.dumps({'objects': [message_object]}), 'application/json')
         }
+        response_message = requests.post(str(base_url+'/dms-core/objects'), files = request_body_message, headers=header_dict)
 
-
-        response_message = requests.post(str(base_url+'/objects'), files = request_body_message, headers=header_dict)
-        response_message_json = response_message.json()
-
-        if response_message.status_code == 422:
+        if response_message.status_code != 200:
             print({'objects': [message_object]})
             print(response_message.content)
-
-        if len(message.attachments)>0 :
+        else:
+            response_message_json = response_message.json()
             message_id = response_message_json['objects'][0]['properties']['system:objectId']['value']
-            #create attachment objects objects if attachments exist
-            attachment_ids = []
-            for attachment in message.attachments:
-                attachment_object = {}
-                attachment_properties = {}
-                attachment_properties["system:objectTypeId"] = {"value": "attachment"}
-                attachment_properties["createdAt"] = {"value": message.created_at}
-                attachment_properties["Name"] = {"value": attachment.name}
-                attachment_properties["text"] = {"value": message.text}
-                attachment_properties["author"] = {"value": message.author}
-                attachment_properties["messageId"] = {"value": message_id}
-                attachment_object["properties"] = attachment_properties
 
-                attachment_object["contentStreams"] = [{
-                    "fileName": attachment.name,
-                    "mimeType": attachment.type,
-                    "cid": "cid_63apple"
-                }]
+            if len(message.attachments)>0:
+                #create attachment objects objects if attachments exist
+                attachment_ids = []
+                for index_attachment, attachment in enumerate(message.attachments):
+                    attachment_object = {}
+                    attachment_properties = {}
+                    attachment_properties["system:objectTypeId"] = {"value": "attachment"}
+                    attachment_properties["createdAt"] = {"value": message.created_at}
+                    attachment_properties["Name"] = {"value": attachment.name}
+                    attachment_properties["text"] = {"value": message.text}
+                    attachment_properties["author"] = {"value": message.author}
+                    attachment_properties["messageId"] = {"value": message_id}
+                    attachment_object["properties"] = attachment_properties
 
-                #import attachment object
-                response_attachment_file = requests.get(attachment.url_private)
-                request_body_attachment = {
-                    'data': ('attachment.json', json.dumps({'objects': [attachment_object]}), 'application/json'),
-                    'cid_63apple': (attachment.name, response_attachment_file.content , attachment.type)
-                }
+                    attachment_object["contentStreams"] = [{
+                        "fileName": attachment.name,
+                        "mimeType": attachment.type,
+                        "cid": "cid_63apple"
+                    }]
 
-                response_attachment = requests.post(str(base_url+'/objects'), files = request_body_attachment, headers = header_dict)
-                response_attachment_json = response_attachment.json()
-                object_id = response_attachment_json['objects'][0]['properties']['system:objectId']['value']
-                attachment_ids.append(object_id)
+                    #import attachment object
+                    print(f'importing attachment {index_attachment} of message {index_message}')
 
-                #retrieve text rendition
-                response_rendition = requests.get(str(base_url+'/objects/'+object_id+'/contents/renditions/text'), headers=header_dict)
-                total = extract_total_from_invoice_text(response_rendition.text)
+                    print('fetching binary content from slack servers')
+                    response_attachment_file = requests.get(attachment.url)
 
-                if total not 0:
-                    invoice_patch_object = {}
-                    invoice_patch_properties = {}
-                    invoice_patch_properties["total"] = {"value": total}
-                    invoice_patch_object["properties"] = invoice_patch_properties
+                    if response_attachment_file.status_code != 200:
+                        print(response_message.content)
+                    else:
+                        request_body_attachment = {
+                            'data': ('attachment.json', json.dumps({'objects': [attachment_object]}), 'application/json'),
+                            'cid_63apple': (attachment.name, response_attachment_file.content , attachment.type)
+                        }
 
-                    response_patch = requests.patch(str(base_url+'/objects/'+object_id), data=json.dumps({'objects':[invoi]}) ,headers=header_dict)
+                        response_attachment = requests.post(str(base_url+'/dms-core/objects'), files = request_body_attachment, headers = header_dict)
+
+                        if response_attachment.status_code != 200:
+                            print({'objects': [message_object]})
+                            print(response_message.content)
+                        else:
+                            timer.sleep(1)
+                            response_attachment_json = response_attachment.json()
+                            attachment_id = response_attachment_json['objects'][0]['properties']['system:objectId']['value']
+                            attachment_ids.append(attachment_id)
+
+                            print(f'processing attachment {index_attachment} text content')
+                            #retrieve text rendition
+                            response_rendition = requests.get(str(base_url+'/dms-view/objects/'+attachment_id+'/contents/renditions/text'), headers=header_dict)
+                            timer.sleep(4)
+                            total = extract_total_from_invoice_text(response_rendition.text)
+
+                            print(f'determined invoice with total: {total}')
+                            if total > 0:
+                                invoice_patch_object = {}
+                                invoice_patch_properties = {}
+                                invoice_patch_properties["total"] = {"value": total}
+                                invoice_patch_object["properties"] = invoice_patch_properties
+                                response_patch = requests.patch(str(base_url+'/dms-core/objects/'+attachment_id), data=json.dumps({'objects':[invoice_patch_object]}) ,headers=header_dict)
+                print(message_id, attachment_ids)
