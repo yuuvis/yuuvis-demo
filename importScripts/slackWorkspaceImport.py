@@ -22,6 +22,7 @@ class Message:
         self.created_at = created_at
         self.channel = channel
         self.attachments = attachments
+
 class Attachment:
     def __init__(self, name, type, url):
         self.name = name
@@ -84,7 +85,7 @@ for channel_dir in channel_dirs:
         message_properties["system:objectTypeId"] = {"value": "message"}
         message_properties["author"] = {"value": message.author}
         message_properties["text"] = {"value": message.text}
-        message_properties["createdAt"] = {"value": message.created_at}
+        message_properties["timestamp"] = {"value": message.created_at}
         message_properties["numOfAttachments"] = {"value": str(len(message.attachments))}
         message_object["properties"] = message_properties
 
@@ -109,7 +110,7 @@ for channel_dir in channel_dirs:
                     attachment_object = {}
                     attachment_properties = {}
                     attachment_properties["system:objectTypeId"] = {"value": "attachment"}
-                    attachment_properties["createdAt"] = {"value": message.created_at}
+                    attachment_properties["timestamp"] = {"value": message.created_at}
                     attachment_properties["Name"] = {"value": attachment.name}
                     attachment_properties["text"] = {"value": message.text}
                     attachment_properties["author"] = {"value": message.author}

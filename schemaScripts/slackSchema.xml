@@ -13,7 +13,7 @@
       <required>true</required>
   </propertyStringDefinition>
   <propertyDateTimeDefinition>
-      <id>createdAt</id>
+      <id>timestamp</id>
       <propertyType>datetime</propertyType>
       <cardinality>single</cardinality>
       <required>true</required>
@@ -36,6 +36,12 @@
       <cardinality>single</cardinality>
       <required>true</required>
   </propertyStringDefinition>
+  <propertyDecimalDefinition>
+	  <id>total</id>
+      <propertyType>decimal</propertyType>
+      <cardinality>single</cardinality>
+      <required>false</required>
+  </propertyDecimalDefinition>
   <typeDocumentDefinition>
       <id>message</id>
       <baseId>system:document</baseId>
@@ -50,12 +56,18 @@
       <propertyReference>messageId</propertyReference>
       <contentStreamAllowed>required</contentStreamAllowed>
       <secondaryObjectTypeId>slackSecondary</secondaryObjectTypeId>
+	  <secondaryObjectTypeId>slackInvoice</secondaryObjectTypeId>
   </typeDocumentDefinition>
   <typeSecondaryDefinition>
       <id>slackSecondary</id>
       <baseId>system:secondary</baseId>
       <propertyReference>author</propertyReference>
       <propertyReference>text</propertyReference>
-      <propertyReference>createdAt</propertyReference>
+      <propertyReference>timestamp</propertyReference>
+  </typeSecondaryDefinition>
+  <typeSecondaryDefinition>
+      <id>slackInvoice</id>
+      <baseId>system:secondary</baseId>
+      <propertyReference>total</propertyReference>
   </typeSecondaryDefinition>
 </schema>
