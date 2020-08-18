@@ -17,7 +17,6 @@ def extract_total_from_invoice_text(invoice_text):
                     price_string = re.sub('[a-zA-z]', '', line)
                     # convert string to float price value
                     price = float(price_str(price_string))
-                    print('detected price: ' + str(price))
                     prices.append(price)
         # if more than two amounts of currency have been detected in the documents text,
         # we will assume that the document can be classified as an invoice.

@@ -6,7 +6,7 @@ import requests
 from processInvoiceContent import extract_total_from_invoice_text
 import time as timer
 
-key = "90f8985c1ad84810b1fd8a6222be536f"
+key = "Your_API_Key_Here"
 header_dict = {}
 
 header_dict['Ocp-Apim-Subscription-Key'] = key
