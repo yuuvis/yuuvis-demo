@@ -7,9 +7,13 @@ from processInvoiceContent import extract_total_from_invoice_text
 import time as timer
 
 key = "Your_API_Key_Here"
-header_dict = {}
 
+header_dict = {}
 header_dict['Ocp-Apim-Subscription-Key'] = key
+header_dict_update = {}
+header_dict_update['Ocp-Apim-Subscription-Key'] = key
+header_dict_update['Content-Type'] = 'application/json'
+
 base_url = 'https://api.yuuvis.io'
 
 input_path = "../input/"
@@ -86,18 +90,20 @@ for channel_dir in channel_dirs:
         message_properties["author"] = {"value": message.author}
         message_properties["text"] = {"value": message.text}
         message_properties["timestamp"] = {"value": message.created_at}
-        message_properties["numOfAttachments"] = {"value": str(len(message.attachments))}
+        message_properties["numOfAttachments"] = {"value": len(message.attachments)}
         message_object["properties"] = message_properties
 
         #import message object
         print(f'importing message {index_message}')
+        message_data = json.dumps({'objects': [message_object]})
+        print(message_data)
         request_body_message = {
-            'data': ('message.json', json.dumps({'objects': [message_object]}), 'application/json')
+            'data': ('message.json', message_data, 'application/json')
         }
         response_message = requests.post(str(base_url+'/dms-core/objects'), files = request_body_message, headers=header_dict)
 
         if response_message.status_code != 200:
-            print({'objects': [message_object]})
+            print(f'message {index_message} import failed')
             print(response_message.content)
         else:
             response_message_json = response_message.json()
@@ -130,7 +136,8 @@ for channel_dir in channel_dirs:
                     response_attachment_file = requests.get(attachment.url)
 
                     if response_attachment_file.status_code != 200:
-                        print(response_message.content)
+                        print(f'attachment {index_attachment} file download failed, aborting attachment import')
+                        print(response_attachment_file.content)
                     else:
                         request_body_attachment = {
                             'data': ('attachment.json', json.dumps({'objects': [attachment_object]}), 'application/json'),
@@ -140,25 +147,36 @@ for channel_dir in channel_dirs:
                         response_attachment = requests.post(str(base_url+'/dms-core/objects'), files = request_body_attachment, headers = header_dict)
 
                         if response_attachment.status_code != 200:
-                            print({'objects': [message_object]})
-                            print(response_message.content)
+                            print(f'attachment {index_attachment} import failed')
+                            print(response_attachment.content)
                         else:
+                            # enrich attachment object
                             timer.sleep(1)
                             response_attachment_json = response_attachment.json()
                             attachment_id = response_attachment_json['objects'][0]['properties']['system:objectId']['value']
                             attachment_ids.append(attachment_id)
 
                             print(f'processing attachment {index_attachment} text content')
-                            #retrieve text rendition
-                            response_rendition = requests.get(str(base_url+'/dms-view/objects/'+attachment_id+'/contents/renditions/text'), headers=header_dict)
+                            # retrieve text rendition
+                            response_rendition = requests.get(str(base_url+'/dms-view/objects/'+attachment_id+'/contents/renditions/text'), headers = header_dict)
                             timer.sleep(4)
                             total = extract_total_from_invoice_text(response_rendition.text)
 
-                            print(f'determined invoice with total: {total}')
+                            #update object if total was found
                             if total > 0:
-                                invoice_patch_object = {}
-                                invoice_patch_properties = {}
-                                invoice_patch_properties["total"] = {"value": total}
-                                invoice_patch_object["properties"] = invoice_patch_properties
-                                response_patch = requests.patch(str(base_url+'/dms-core/objects/'+attachment_id), data=json.dumps({'objects':[invoice_patch_object]}) ,headers=header_dict)
+                                invoice_update_object = {}
+                                invoice_update_properties = attachment_properties
+                                invoice_update_properties["total"] = {"value": total}
+                                invoice_update_object["properties"] = invoice_update_properties
+
+                                data_update = json.dumps({'objects':[invoice_update_object]})
+
+                                response_update = requests.post(str(base_url+'/dms-core/objects/'+attachment_id), data=data_update, headers = header_dict_update)
+                                if response_update.status_code != 200:
+                                    print(f'update of attachment {index_attachment} failed.')
+                                    print(response_update.content)
+                                else:
+                                    print(f'updated attachment {index_attachment} with new sum total')
+                                    timer.sleep(1)
+
                 print(message_id, attachment_ids)
